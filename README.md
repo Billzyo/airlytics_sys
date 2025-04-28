@@ -1,5 +1,5 @@
-# airlytics_sys
 # Airlytics
+#ESP32 & PHP/MySQL temperature-humidity monitor
 
 ESP32-based temperature & humidity monitor  
 • ESP32 sketch sends DHT11 readings to PHP/MySQL  
