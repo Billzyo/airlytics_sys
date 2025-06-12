@@ -1,66 +1,77 @@
+/*This Arduino sketch reads temperature and humidity data from a DHT11 sensor and displays the values on a 16x2 LCD screen.
+It also sends the readings via Serial1 to an ESP32 for remote monitoring or logging. 
+Additionally, it listens for relay control commands (RELAY_ON or RELAY_OFF) from the ESP32 to toggle a connected relay module.
+
+Hardware Connections
+DHT11 Sensor: Data pin on pin 6.
+LCD (16x2): Connected via pins 12, 11, 5, 4, 3, 2.
+Relay Module: Controlled via pin 7.
+Serial1 (ESP32 Communication): Baud rate 115200.*/
+
 #include <LiquidCrystal.h>
-#include <Adafruit_Sensor.h>
 #include <DHT.h>
-#include <DHT_U.h>
 
-// LCD pins <--> Arduino pins
-const int RS = 11, EN = 12, D4 = 2, D5 = 3, D6 = 4, D7 = 5;
-LiquidCrystal lcd(RS, EN, D4, D5, D6, D7);
+// Initialize the LCD with the pin numbers
+LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 
-#define DHTPIN 6     // Digital pin connected to the DHT sensor
-#define DHTTYPE DHT22 // DHT 22 (AM2302)
-#define LEDPIN 7      // LED pin
+#define DHTPIN 6
+#define DHTTYPE DHT11
+#define RELAY_PIN 7  // Relay control pin
 
-DHT_Unified dht(DHTPIN, DHTTYPE);
-uint32_t delayMS;
+DHT dht(DHTPIN, DHTTYPE);
 
 void setup() {
-  Serial.begin(9600);
-  lcd.begin(16, 2); // set up number of columns and rows
+  Serial.begin(115200);   // For debugging via USB
+  Serial1.begin(115200);  // For communication with ESP32
   dht.begin();
-  pinMode(LEDPIN, OUTPUT); // Set LED pin as output
 
-  lcd.setCursor(0, 0);
-  lcd.print("  CHUNGU MUSAKA ");
-  lcd.setCursor(0, 1);
-  lcd.print("Temp Monitor!");
-  delay(2000);
-  lcd.clear();
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);  // Initialize relay off
 
-  sensor_t sensor;
-  dht.temperature().getSensor(&sensor);
-  delayMS = sensor.min_delay / 1000;
+  lcd.begin(16, 2);
+  lcd.print("Initializing...");
 }
 
 void loop() {
-  delay(delayMS);
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
 
-  sensors_event_t tempEvent, humEvent;
-  dht.temperature().getEvent(&tempEvent);
-  dht.humidity().getEvent(&humEvent);
-
-  lcd.clear();
-
-  lcd.setCursor(0, 0);
-  if (isnan(tempEvent.temperature)) {
-    lcd.print("Temp Error");
+  if (isnan(humidity) || isnan(temperature)) {
+    Serial.println("Sensor Error");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Sensor Error");
   } else {
-    lcd.print("TMP: ");
-    lcd.print((int)tempEvent.temperature);
-    lcd.print((char)223);
+    String dataToSend = "Temp:" + String(temperature, 1) + "C Hum:" + String(humidity, 1) + "%";
+    Serial1.print(dataToSend + "\n");
+    Serial.println("Sent: " + dataToSend);
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("T:");
+    lcd.print(temperature, 1);
     lcd.print("C");
-  }
-
-  lcd.setCursor(0, 1);
-  if (isnan(humEvent.relative_humidity)) {
-    lcd.print("Humidity Err");
-  } else {
-    lcd.print("HUM: ");
-    lcd.print((int)humEvent.relative_humidity);
+    lcd.setCursor(0, 1);
+    lcd.print("H:");
+    lcd.print(humidity, 1);
     lcd.print("%");
   }
 
-  Serial.print(tempEvent.temperature);
-  Serial.print(",");
-  Serial.println(humEvent.relative_humidity);
+  // ✅ Listen for relay commands from ESP32 via Serial1
+  if (Serial1.available()) {
+    String command = Serial1.readStringUntil('\n');
+    command.trim();
+
+    Serial.println("Received command: " + command);
+
+    if (command.equalsIgnoreCase("RELAY_ON")) {
+      digitalWrite(RELAY_PIN, HIGH);
+      Serial.println("Relay turned ON");
+    } else if (command.equalsIgnoreCase("RELAY_OFF")) {
+      digitalWrite(RELAY_PIN, LOW);
+      Serial.println("Relay turned OFF");
+    }
+  }
+
+  delay(2000);
 }
